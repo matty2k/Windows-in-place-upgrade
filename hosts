@@ -1,0 +1,33 @@
+[your hosts] # This defines a group of hosts. Replace 'your hosts' with a descriptive name for your group, e.g., 'windows_servers'.
+
+# Add individual hostnames or IPs of the servers you want to manage here, e.g.:
+# server1.example.com
+# server2.example.com
+
+[your hosts:vars]
+# The username for the Ansible connection.
+ansible_user= # Example: ansible_user=admin
+
+# The password for the specified user.
+# Example: ansible_password=yourpassword
+ansible_password=
+
+# The port on which the target host is listening. For WinRM, the default is 5985 (HTTP) or 5986 (HTTPS).
+# Example: ansible_port=5985
+ansible_port=
+
+# Specifies the connection type. 'winrm' indicates Windows Remote Management.
+ansible_connection=winrm
+
+# Specifies the WinRM transport to use. Choices include 'ntlm', 'kerberos', or 'credssp'.
+# Example: ansible_winrm_transport=ntlm
+ansible_winrm_transport=
+
+# Determines whether to validate the remote server's certificate in HTTPS connections.
+# The only valid value is 'ignore'. Set this if using self-signed certificates.
+# Example: ansible_winrm_server_cert_validation=ignore
+ansible_winrm_server_cert_validation=
+
+# Specifies the WinRM scheme to use. Choices include 'http' or 'https'.
+# Example: ansible_winrm_scheme=https
+ansible_winrm_scheme=
