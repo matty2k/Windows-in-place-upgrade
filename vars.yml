@@ -1,0 +1,6 @@
+
+vcenter_hostname: "your_vcenter_hostname" # The hostname or IP address of your vCenter server.
+vcenter_username: "your_vcenter_username" # The username to authenticate against your vCenter server.
+vcenter_password: "Your_vcenter_password" # The password for the specified vCenter username.
+vcenter_validate_certs: no  # Whether to validate vCenter's SSL certificate. 
+# Set to 'no' to disable certificate validation, which can be useful in environments with self-signed certificates.
