@@ -9,25 +9,20 @@
 ansible_user= # Example: ansible_user=admin
 
 # The password for the specified user.
-# Example: ansible_password=yourpassword
-ansible_password=
+ansible_password= # Example: ansible_password=yourpassword
 
 # The port on which the target host is listening. For WinRM, the default is 5985 (HTTP) or 5986 (HTTPS).
-# Example: ansible_port=5985
-ansible_port=
+ansible_port= # Example: ansible_port=5985
 
 # Specifies the connection type. 'winrm' indicates Windows Remote Management.
 ansible_connection=winrm
 
 # Specifies the WinRM transport to use. Choices include 'ntlm', 'kerberos', or 'credssp'.
-# Example: ansible_winrm_transport=ntlm
-ansible_winrm_transport=
+ansible_winrm_transport= # Example: ansible_winrm_transport=ntlm
 
 # Determines whether to validate the remote server's certificate in HTTPS connections.
 # The only valid value is 'ignore'. Set this if using self-signed certificates.
-# Example: ansible_winrm_server_cert_validation=ignore
-ansible_winrm_server_cert_validation=
+ansible_winrm_server_cert_validation= # Example: ansible_winrm_server_cert_validation=ignore
 
 # Specifies the WinRM scheme to use. Choices include 'http' or 'https'.
-# Example: ansible_winrm_scheme=https
-ansible_winrm_scheme=
+ansible_winrm_scheme= # Example: ansible_winrm_scheme=https
