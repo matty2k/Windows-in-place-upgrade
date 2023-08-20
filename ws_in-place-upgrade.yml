@@ -1,0 +1,213 @@
+# Ansible playbook Windows in-place upgrade!
+
+- name: Retrieve VM info and mount ISO via guest
+  hosts: localhost
+  gather_facts: no
+
+  vars_files:
+    - vars.yml             # Configure your variables in vars.yml
+    - serverlist.yml       # Provide your server list in serverlist.yml 
+
+##### Step 1: Verify if the Windows machines exist and mount the ISO file #####
+
+  tasks:
+    - name: Search for windows machine
+      vmware.vmware_rest.vcenter_vm_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        filter_names: "{{ server_name }}"
+
+      register: search_result
+
+    - name: Windows Server information
+      debug:
+        var: search_result
+
+    - name: Mount windows 2016 ISO image via guest
+      vmware.vmware_rest.vcenter_vm_hardware_cdrom:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        vm: '{{ search_result.value[0].vm }}'
+        type: SATA
+        sata:
+          bus: 0
+          unit: 2
+        start_connected: true
+        backing:
+          iso_file: '[yourdisk] ISO/win2016.ISO'  # Update [yourdisk] and path to ISO
+          type: ISO_FILE
+      register: _result
+
+##### Step 2: Turn off Windows machines and take snapshot #####
+
+- name: Soft Shutdown 1min
+  hosts: your hosts # Ensure your hosts is the correct host group in your inventory
+  gather_facts: no
+  tasks:
+    - name: Notify users and execute soft shutdown
+      win_shell: shutdown.exe /s /t 60 /c "Server is shutting down in 1 minute. Please save your work."
+
+- name: vcenter info
+  hosts: localhost
+  gather_facts: no
+
+  vars_files:
+    - vars.yml
+    - serverlist.yml
+
+  tasks:
+    - name: Wait until the server is fully down
+      vmware.vmware_rest.vcenter_vm_info:
+        vcenter_hostname: "{{ vcenter_hostname }}"
+        vcenter_username: "{{ vcenter_username }}"
+        vcenter_password: "{{ vcenter_password }}"
+        vcenter_validate_certs: "{{ vcenter_validate_certs }}"
+        filter_names: "{{ server_name }}"
+      register: vm_status
+      until: vm_status.value[0].power_state == "POWERED_OFF"
+      retries: 60  # Number of times we check the status before giving up.
+      delay: 120   # Waiting time between each check (in seconds).
+
+    - name: Windows Server information
+      debug:
+        var: vm_status
+
+
+    - name: Create Snapshot of Windows VM
+      community.vmware.vmware_guest_snapshot:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: "{{ vcenter_validate_certs }}"
+        datacenter: "{{ datacenter }}"
+        folder: "{{ folder }}"
+        name: "{{ server_name }}"
+        state: present
+        snapshot_name: "ansible_snapshot_{{ lookup('pipe', 'date +%Y-%m-%d') }}"
+        description: "Taken by Ansible on {{ lookup('pipe', 'date +%Y-%m-%d') }}"
+      register: snapshot_result
+      when: vm_status.value | length > 0
+
+##### Step 3: Turn on Windows machines, find CD drive letter and start in-place upgrade #####
+
+    - name: Power on the virtual machine via vmware_guest
+      vmware_guest_powerstate:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ vcenter_username }}"
+        password: "{{ vcenter_password }}"
+        validate_certs: "{{ vcenter_validate_certs }}"
+        datacenter: "{{ datacenter }}"
+        name: "{{ server_name }}"
+        state: powered-on
+      delegate_to: localhost
+      when: snapshot_result is defined and snapshot_result.failed | default(false) == false
+
+
+- name: Find drive letter based on volume label via win_shell
+  hosts: your hosts
+  gather_facts: no
+  tasks:
+
+    - name: Find drive letter based on volume label via win_shell
+      pause:
+        minutes: 5
+
+    - name: Use PowerShell to retrieve disk info
+      win_shell: |
+        Get-Volume | Where-Object { $_.FileSystemLabel -eq "SSS_X64FREV_EN-US_DV9" } | Select-Object -ExpandProperty DriveLetter
+      register: disk_info
+      retries: 60
+      delay: 120
+      until: disk_info.stdout | trim != ""
+
+    - name: Show drive letter for 'SSS_X64FREV_EN-US_DV9' #You need to change this to your actual ISO name
+      debug:
+        msg: "{{ disk_info.stdout | trim }}"
+
+
+    - name: Run setup.exe for upgrade
+      win_command: "{{ disk_info.stdout | trim }}:\\setup.exe /auto upgrade /dynamicupdate disable /migratedrivers all /showoobe none /imageindex 4 /compat ignorewarning"
+      register: result
+      failed_when: result.rc != 0
+      ignore_unreachable: true
+      # This command starts the Windows setup process from the specified drive.
+      # - "/auto upgrade": Automates the Windows upgrade process.
+      # - "/dynamicupdate disable": Disables the use of Dynamic Update for setup.
+      # - "/migratedrivers all": Migrates all drivers during the upgrade.
+      # - "/showoobe none": Skips Out Of Box Experience (OOBE) post-install screens.
+      # - "/imageindex 4": Specifies the index of the image to install from the .wim file on the ISO.
+      # - "/compat ignorewarning": Ignores compatibility warnings during setup.
+
+    - name: Wait a while after the upgrade
+      pause:
+        minutes: 30
+
+
+    - name: Wait until the system is in place
+      win_ping:
+      register: ping_result
+      until: ping_result is succeeded
+      retries: 80  # Try a total of 80 times (including the first attempt)
+      delay: 900  # Wait 900 seconds (15 minutes) between attempts
+      ignore_errors: true
+
+    - name: Show the result
+      debug:
+        msg: "{{ result.stdout_lines }}"
+
+
+
+##### Step 4: Retrieve current OS and wait until 2016 is in place before starting with windows updates #####
+
+
+    - name: Retrieve current OS name
+      win_shell: (Get-WmiObject -Class Win32_OperatingSystem).Caption
+      register: current_os_name
+      retries: 15
+      delay: 60
+
+    - name: Show current OS name
+      debug:
+        msg: "Current operating system is: {{ current_os_name.stdout | trim }}"
+
+    - name: Correct OS should be 2016
+      win_shell: (Get-WmiObject -Class Win32_OperatingSystem).Caption
+      register: current_os_name
+      until: "'Microsoft Windows Server 2016' in current_os_name.stdout"
+      retries: 15
+      delay: 60
+
+    - name: Show current OS name
+      debug:
+        msg: "Current operating system is: {{ current_os_name.stdout | trim }}"
+
+    - name: Ensure Ansible_windows_updates directory exists
+      win_file:
+        path: 'C:\\Windows\\Logs\\Ansible_windows_updates'
+        state: directory
+
+    - name: Get current date
+      set_fact:
+        current_date: "{{ lookup('pipe', 'date +%Y-%m-%d') }}"
+
+    - name: Install updates
+      win_updates:
+        reboot: yes
+        log_path: "C:\\Windows\\Logs\\Ansible_windows_updates\\patch_{{ current_date }}.log"
+      register: update_result
+
+    - name: Display installed updates
+      debug:
+        var: update_result
+
+    - name: Gather installed updates
+      win_shell: 'Get-WmiObject -Class "Win32_QuickFixEngineering" | Select-Object -Property "Description", "InstalledOn" | Out-File -FilePath "C:\\Windows\\Logs\\Ansible_windows_updates\\InstalledUpdates.txt" -Encoding ASCII'
+      register: win_updates
+
+    - name: Display installed updates
+      debug:
+        var: win_updates.stdout_lines
