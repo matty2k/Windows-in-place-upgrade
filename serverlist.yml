@@ -1,0 +1,4 @@
+##### Specify the location of the server in vCenter and determine which servers you wish to include #####
+datacenter: "your_vcenter_datacenter"   # Replace "DatacenterName" with your actual datacenter name
+folder: your_vcenter_folder   # Replace "YourFolderName" with the appropriate folder name in vCenter 
+server_name: your_windows_server_in_vcenter  # Replace this with the actual name of your server in vCenter
